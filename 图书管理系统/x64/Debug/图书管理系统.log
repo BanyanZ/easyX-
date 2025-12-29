@@ -1,1 +1,5 @@
-﻿  图书管理系统.vcxproj -> C:\Users\Lenovo\source\repos\图书管理系统\x64\Debug\图书管理系统.exe
+﻿  main.cpp
+C:\Users\Lenovo\source\repos\图书管理系统\图书管理系统\main.cpp(396,2): warning C4102: “defult”: 未引用的标签
+  main_gui.cpp
+  正在生成代码...
+  图书管理系统.vcxproj -> C:\Users\Lenovo\source\repos\图书管理系统\x64\Debug\图书管理系统.exe

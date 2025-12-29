@@ -33,13 +33,40 @@ public:
 		}
 		return -1;
 	}
-	int findBook(string bn) {//根据书名，作者，类别，ISBN码
+	int findBook(string bn) {//根据书名，作者，类别，ISBN码（精确匹配）
 		for (int i = 0; i < bkarray.size(); i++) {
 			if (bkarray[i].getBookname() == bn || bkarray[i].getAuthor() == bn || bkarray[i].getCategory() == bn || bkarray[i].getISBN() == bn || bkarray[i].getDate() == bn) {
 				return i;
 			}
 		}
 		return -1;
+	}
+
+	// 模糊查询，返回所有匹配的索引
+	vector<int> fuzzyFindBook(const string& keyword) {
+		vector<int> results;
+		if (keyword.empty()) return results;
+
+		for (int i = 0; i < (int)bkarray.size(); i++) {
+			if (!bkarray[i].getIsexisting()) continue;
+
+			string bookname = bkarray[i].getBookname();
+			string author = bkarray[i].getAuthor();
+			string category = bkarray[i].getCategory();
+			string isbn = bkarray[i].getISBN();
+			string press = bkarray[i].getPress();
+
+			// 转换为小写进行不区分大小写的匹配（简单处理，中文直接比较）
+			// 检查是否包含关键词
+			if (bookname.find(keyword) != string::npos ||
+				author.find(keyword) != string::npos ||
+				category.find(keyword) != string::npos ||
+				isbn.find(keyword) != string::npos ||
+				press.find(keyword) != string::npos) {
+				results.push_back(i);
+			}
+		}
+		return results;
 	}
 
 	//3.修改图书信息，根据上面查找到的书籍数字进行修改

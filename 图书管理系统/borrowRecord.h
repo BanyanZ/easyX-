@@ -14,12 +14,13 @@ public:
 	string shouldReturn_;//应还时间
 	string returnTime_;//实际归还时间
 	int continue_;//剩余借阅次数
+	int rating_;//评价星级（1-5星）
 
 public:
 	BorrowRecord() {}//默认构造
-	BorrowRecord(int userID, int bookID, string borrowTime, string shouldReturn, string returnTime, int continueNum, bool isReturned = false, bool isOverdue = false, double fineAmount = 0.0, int borrowID = 0)
+	BorrowRecord(int userID, int bookID, string borrowTime, string shouldReturn, string returnTime, int continueNum, bool isReturned = false, bool isOverdue = false, double fineAmount = 0.0, int borrowID = 0, int rating = 0)
 		:userID_(userID), bookID_(bookID), borrowTime_(borrowTime), shouldReturn_(shouldReturn), borrowID_(borrowID),
-		returnTime_(returnTime), continue_(continueNum) {
+		returnTime_(returnTime), continue_(continueNum), rating_(rating) {
 	}//有参构造
 
 //返回值
@@ -30,6 +31,7 @@ public:
 	string getReturnTime()const { return returnTime_; }
 	int getContinue()const { return continue_; }
 	int getBorrowID()const { return borrowID_; }
+	int getRating()const { return rating_; }
 
 	//设置值
 	void setUserID(int userID) { userID_ = userID; }
@@ -39,4 +41,5 @@ public:
 	void setReturnTime(const string& returnTime) { returnTime_ = returnTime; }
 	void setContinue(int continueNum) { continue_ = continueNum; }
 	void setBprrowID(int borrowID) { borrowID_ = borrowID; }
+	void setRating(int rating) { rating_ = rating; }
 };

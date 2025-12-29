@@ -182,6 +182,17 @@ void returnBook()
 	cout << "超期天数: " << overdueDays << endl;
 	cout << "罚款: " << (overdueDays * 8) << " 元" << endl;
 
+	// 输入评价（1-5星）
+	cout << "请为这本书评分（1-5星）：" << endl;
+	int rating = 0;
+	cin >> rating;
+	if (rating < 1 || rating > 5) {
+		cout << "评价必须在1-5星之间，已设置为默认值5星" << endl;
+		rating = 5;
+	}
+	recordMgr.setRecordRating(borrowID, rating);
+	cout << "评价已保存：" << rating << " 星" << endl;
+
 	//更新读者内部借书信息（还书后清空）
 	manager.clearReaderBook(readerIdx);
 

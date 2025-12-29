@@ -5,6 +5,8 @@
 #include <vector>
 #include <ctime>
 #include <cstdio>
+#include <algorithm>
+#include <utility>
 #include <windows.h>
 #include "manager.h"
 #include "manageBook.h"
@@ -21,7 +23,7 @@ extern ManageBook bookmanager;
 extern ManageBorrowRecord recordMgr;
 
 // ==================== 常量定义 ====================
-const int WIN_WIDTH = 1000;
+const int WIN_WIDTH = 1000;//长宽定义
 const int WIN_HEIGHT = 700;
 const int NAV_WIDTH = 180;
 const int HEADER_HEIGHT = 60;
@@ -94,6 +96,25 @@ static void showMessage(const string& msg, COLORREF color = COLOR_BTN) {
 // 从 manager 获取所有读者
 static vector<Reader>& getAllReaders() {
     return manager.rd;
+}
+
+// 计算图书的评价（返回平均分和评价人数）
+// 计算方式：平均分 = 所有评价的总分 / 评价人数
+// 例如：三个用户分别打了5分、4分、3分，则平均分 = (5+4+3)/3 = 4.0分
+static pair<double, int> calculateBookRating(int bookID) {
+    const vector<BorrowRecord>& records = recordMgr.allRecords();
+    int totalRating = 0;
+    int ratingCount = 0;
+
+    for (const BorrowRecord& rec : records) {
+        if (rec.getBookID() == bookID && rec.getRating() > 0 && rec.getRating() <= 5) {
+            totalRating += rec.getRating();
+            ratingCount++;
+        }
+    }
+
+    if (ratingCount == 0) return make_pair(0.0, 0);
+    return make_pair((double)totalRating / ratingCount, ratingCount);
 }
 
 // ==================== 绘制导航栏 ====================
@@ -198,6 +219,7 @@ static void drawHomePage() {
 static int bookListScroll = 0;
 static int selectedBookIdx = -1;
 static wstring bookSearchKey = L"";
+static vector<int> bookSearchResults; // 存储搜索结果
 
 static void drawBookPage() {
     drawHeader(L"图书管理");
@@ -230,12 +252,25 @@ static void drawBookPage() {
     outtextxy(cx + 520, cy + 10, L"总数");
     outtextxy(cx + 580, cy + 10, L"剩余");
     outtextxy(cx + 640, cy + 10, L"状态");
+    outtextxy(cx + 720, cy + 10, L"评价");
 
-    // 图书列表（过滤已删除的）
+    // 图书列表（过滤已删除的，如果有搜索则只显示搜索结果）
     vector<Book>& allBooks = bookmanager.allBooks();
     vector<int> validIdx;
-    for (int i = 0; i < (int)allBooks.size(); i++) {
-        if (allBooks[i].getIsexisting()) validIdx.push_back(i);
+
+    if (!bookSearchResults.empty()) {
+        // 使用搜索结果
+        for (int idx : bookSearchResults) {
+            if (idx >= 0 && idx < (int)allBooks.size() && allBooks[idx].getIsexisting()) {
+                validIdx.push_back(idx);
+            }
+        }
+    }
+    else {
+        // 显示所有图书
+        for (int i = 0; i < (int)allBooks.size(); i++) {
+            if (allBooks[i].getIsexisting()) validIdx.push_back(i);
+        }
     }
     int listY = cy + 40;
     int rowHeight = 30;
@@ -278,6 +313,22 @@ static void drawBookPage() {
             settextcolor(COLOR_BTN);
             outtextxy(cx + 640, rowY + 7, L"可借");
         }
+
+        // 显示评价
+        pair<double, int> ratingInfo = calculateBookRating(b.getID());
+        double avgRating = ratingInfo.first;
+        int ratingCount = ratingInfo.second;
+
+        if (ratingCount > 0) {
+            wchar_t ratingBuf[64];
+            swprintf(ratingBuf, 64, L"%.1f分(%d人)", avgRating, ratingCount);
+            settextcolor(RGB(255, 193, 7)); // 金色
+            outtextxy(cx + 720, rowY + 7, ratingBuf);
+        }
+        else {
+            settextcolor(RGB(113, 128, 150));
+            outtextxy(cx + 720, rowY + 7, L"暂无评价");
+        }
     }
 
     // 提示信息（显示在查询按钮后面）
@@ -286,11 +337,22 @@ static void drawBookPage() {
         settextstyle(16, 0, _T("微软雅黑"));
         outtextxy(cx + 370, HEADER_HEIGHT + 28, s2ws(g_message).c_str());
     }
+
+    // 显示搜索状态
+    if (!bookSearchKey.empty()) {
+        settextcolor(RGB(113, 128, 150));
+        settextstyle(14, 0, _T("微软雅黑"));
+        wchar_t searchInfo[128];
+        swprintf(searchInfo, 128, L"搜索: %s (%d本)", bookSearchKey.c_str(), (int)bookSearchResults.size());
+        outtextxy(cx + 360, cy + 5, searchInfo);
+    }
 }
 
 // ==================== 读者管理页面 ====================
 static int readerListScroll = 0;
 static int selectedReaderIdx = -1;
+static wstring readerSearchKey = L"";
+static vector<int> readerSearchResults; // 存储搜索结果
 
 static void drawReaderPage() {
     drawHeader(L"读者管理");
@@ -322,12 +384,25 @@ static void drawReaderPage() {
     outtextxy(cx + 350, cy + 10, L"联系方式");
     outtextxy(cx + 500, cy + 10, L"最大借书量");
     outtextxy(cx + 620, cy + 10, L"借书状态");
+    outtextxy(cx + 720, cy + 10, L"冲突");
 
-    // 读者列表（过滤已删除的）
+    // 读者列表（过滤已删除的，如果有搜索则只显示搜索结果）
     vector<Reader>& allReaders = getAllReaders();
     vector<int> validIdx;
-    for (int i = 0; i < (int)allReaders.size(); i++) {
-        if (allReaders[i].getIdExisting()) validIdx.push_back(i);
+
+    if (!readerSearchResults.empty()) {
+        // 使用搜索结果
+        for (int idx : readerSearchResults) {
+            if (idx >= 0 && idx < (int)allReaders.size() && allReaders[idx].getIdExisting()) {
+                validIdx.push_back(idx);
+            }
+        }
+    }
+    else {
+        // 显示所有读者
+        for (int i = 0; i < (int)allReaders.size(); i++) {
+            if (allReaders[i].getIdExisting()) validIdx.push_back(i);
+        }
     }
     int listY = cy + 40;
     int rowHeight = 30;
@@ -366,6 +441,32 @@ static void drawReaderPage() {
             settextcolor(COLOR_BTN);
             outtextxy(cx + 620, rowY + 7, L"无借阅");
         }
+
+        // 检查冲突：ID或用户名重复
+        bool hasConflict = false;
+        string conflictMsg = "";
+        for (int j = 0; j < (int)allReaders.size(); j++) {
+            if (j != validIdx[vi] && allReaders[j].getIdExisting()) {
+                if (allReaders[j].getID() == r.getID()) {
+                    hasConflict = true;
+                    conflictMsg = "ID重复";
+                    break;
+                }
+                if (allReaders[j].getUsername() == r.getUsername()) {
+                    hasConflict = true;
+                    conflictMsg = "用户名重复";
+                    break;
+                }
+            }
+        }
+        if (hasConflict) {
+            settextcolor(COLOR_BTN_DANGER);
+            outtextxy(cx + 720, rowY + 7, s2ws(conflictMsg).c_str());
+        }
+        else {
+            settextcolor(RGB(113, 128, 150));
+            outtextxy(cx + 720, rowY + 7, L"无");
+        }
     }
 
     // 提示信息（显示在查询按钮后面）
@@ -373,6 +474,15 @@ static void drawReaderPage() {
         settextcolor(g_msgColor);
         settextstyle(16, 0, _T("微软雅黑"));
         outtextxy(cx + 370, HEADER_HEIGHT + 28, s2ws(g_message).c_str());
+    }
+
+    // 显示搜索状态
+    if (!readerSearchKey.empty()) {
+        settextcolor(RGB(113, 128, 150));
+        settextstyle(14, 0, _T("微软雅黑"));
+        wchar_t searchInfo[128];
+        swprintf(searchInfo, 128, L"搜索: %s (%d人)", readerSearchKey.c_str(), (int)readerSearchResults.size());
+        outtextxy(cx + 360, cy + 5, searchInfo);
     }
 }
 
@@ -408,7 +518,7 @@ static void drawBorrowPage() {
     drawRoundBtn(cx, cy + 40, 150, 40, L"还书 (输入)", RGB(237, 137, 54));
 
     settextcolor(RGB(113, 128, 150));
-    outtextxy(cx + 170, cy + 52, L"点击按钮后在弹出框中输入读者ID");
+    outtextxy(cx + 170, cy + 52, L"点击按钮后在弹出框中输入借阅ID");
 
     // 借阅记录区域
     cy += 120;
@@ -437,16 +547,20 @@ static void drawBorrowPage() {
     outtextxy(cx + 240, cy + 8, L"借阅时间");
     outtextxy(cx + 400, cy + 8, L"应还时间");
     outtextxy(cx + 560, cy + 8, L"状态");
+    outtextxy(cx + 640, cy + 8, L"评价");
 
-    const vector<BorrowRecord>& records = recordMgr.allRecords();
+    vector<BorrowRecord> records = recordMgr.allRecords();
+    // 按借阅时间排序（从早到晚，即按先后顺序）
+    sort(records.begin(), records.end(), [](const BorrowRecord& a, const BorrowRecord& b) {
+        return a.getBorrowTime() < b.getBorrowTime();
+        });
+
     int listY = cy + 35;
     int rowHeight = 25;
     int maxShow = min(8, (int)records.size());
 
     for (int i = 0; i < maxShow; i++) {
-        int idx = (int)records.size() - 1 - i;
-        if (idx < 0) break;
-        const BorrowRecord& rec = records[idx];
+        const BorrowRecord& rec = records[i];
         int rowY = listY + i * rowHeight;
 
         if (i % 2 == 1) {
@@ -472,6 +586,23 @@ static void drawBorrowPage() {
         else {
             settextcolor(COLOR_BTN);
             outtextxy(cx + 560, rowY + 5, L"已归还");
+        }
+
+        // 显示评价（星级）
+        int rating = rec.getRating();
+        if (rating > 0 && rating <= 5) {
+            wchar_t starBuf[16];
+            swprintf(starBuf, 16, L"%d★", rating);
+            settextcolor(RGB(255, 193, 7)); // 金色
+            outtextxy(cx + 640, rowY + 5, starBuf);
+        }
+        else if (rec.getReturnTime().empty()) {
+            settextcolor(RGB(113, 128, 150));
+            outtextxy(cx + 640, rowY + 5, L"-");
+        }
+        else {
+            settextcolor(RGB(113, 128, 150));
+            outtextxy(cx + 640, rowY + 5, L"未评价");
         }
     }
 
@@ -601,23 +732,51 @@ int main_gui() {
                         const wchar_t* labels[] = { L"图书ID:", L"书名:", L"作者:", L"出版社:", L"出版年份:", L"分类:", L"总数:" };
                         wstring vals[7] = { L"", L"", L"", L"", L"2024", L"", L"1" };
                         if (showInputDialog(L"添加图书", labels, vals, 7)) {
-                            Book b;
-                            b.setID(_wtoi(vals[0].c_str()));
-                            char buf[256];
-                            WideCharToMultiByte(CP_ACP, 0, vals[1].c_str(), -1, buf, 256, NULL, NULL);
-                            b.setBookname(buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[2].c_str(), -1, buf, 256, NULL, NULL);
-                            b.setAuthor(buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[3].c_str(), -1, buf, 256, NULL, NULL);
-                            b.setPress(buf);
-                            b.setPublishYear(_wtoi(vals[4].c_str()));
-                            WideCharToMultiByte(CP_ACP, 0, vals[5].c_str(), -1, buf, 256, NULL, NULL);
-                            b.setCategory(buf);
-                            int total = _wtoi(vals[6].c_str());
-                            b.setTotal(total);
-                            b.setLeftnum(total);
-                            bookmanager.addBook(b);
-                            showMessage("图书添加成功！", COLOR_BTN);
+                            int newID = _wtoi(vals[0].c_str());
+                            char booknameBuf[256];
+                            WideCharToMultiByte(CP_ACP, 0, vals[1].c_str(), -1, booknameBuf, 256, NULL, NULL);
+                            string newBookname = booknameBuf;
+
+                            // 检查ID和书名冲突
+                            bool hasConflict = false;
+                            string conflictMsg = "";
+                            vector<Book>& allBooks = bookmanager.allBooks();
+                            for (size_t i = 0; i < allBooks.size(); i++) {
+                                if (allBooks[i].getIsexisting()) {
+                                    if (allBooks[i].getID() == newID) {
+                                        hasConflict = true;
+                                        conflictMsg = "图书ID已存在！";
+                                        break;
+                                    }
+                                    if (allBooks[i].getBookname() == newBookname) {
+                                        hasConflict = true;
+                                        conflictMsg = "书名已存在！";
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (hasConflict) {
+                                showMessage(conflictMsg, COLOR_BTN_DANGER);
+                            }
+                            else {
+                                Book b;
+                                b.setID(newID);
+                                b.setBookname(newBookname);
+                                char buf[256];
+                                WideCharToMultiByte(CP_ACP, 0, vals[2].c_str(), -1, buf, 256, NULL, NULL);
+                                b.setAuthor(buf);
+                                WideCharToMultiByte(CP_ACP, 0, vals[3].c_str(), -1, buf, 256, NULL, NULL);
+                                b.setPress(buf);
+                                b.setPublishYear(_wtoi(vals[4].c_str()));
+                                WideCharToMultiByte(CP_ACP, 0, vals[5].c_str(), -1, buf, 256, NULL, NULL);
+                                b.setCategory(buf);
+                                int total = _wtoi(vals[6].c_str());
+                                b.setTotal(total);
+                                b.setLeftnum(total);
+                                bookmanager.addBook(b);
+                                showMessage("图书添加成功！", COLOR_BTN);
+                            }
                         }
                     }
                     // 删除图书
@@ -645,19 +804,33 @@ int main_gui() {
                     }
                     // 查询图书
                     if (ptInRect(mx, my, cx + 270, cy, 80, 35)) {
-                        const wchar_t* labels[] = { L"关键词(书名/作者/分类):" };
-                        wstring vals[1] = { L"" };
+                        const wchar_t* labels[] = { L"关键词(书名/作者/分类/出版社):" };
+                        wstring vals[1] = { bookSearchKey };
                         if (showInputDialog(L"查询图书", labels, vals, 1)) {
                             char buf[256];
                             WideCharToMultiByte(CP_ACP, 0, vals[0].c_str(), -1, buf, 256, NULL, NULL);
-                            int idx = bookmanager.findBook(string(buf));
-                            if (idx >= 0) {
-                                selectedBookIdx = idx;
-                                bookListScroll = max(0, idx - 5);
-                                showMessage("已找到图书！", COLOR_HEADER);
+                            string keyword = buf;
+                            bookSearchKey = vals[0];
+
+                            if (keyword.empty()) {
+                                // 清空搜索，显示所有图书
+                                bookSearchResults.clear();
+                                bookSearchKey = L"";
+                                showMessage("已清空搜索，显示所有图书", COLOR_HEADER);
                             }
                             else {
-                                showMessage("未找到匹配图书", COLOR_BTN_DANGER);
+                                // 执行模糊查询
+                                bookSearchResults = bookmanager.fuzzyFindBook(keyword);
+                                if (!bookSearchResults.empty()) {
+                                    selectedBookIdx = bookSearchResults[0];
+                                    bookListScroll = 0;
+                                    char msg[128];
+                                    sprintf(msg, "找到 %d 本匹配图书", (int)bookSearchResults.size());
+                                    showMessage(msg, COLOR_HEADER);
+                                }
+                                else {
+                                    showMessage("未找到匹配图书", COLOR_BTN_DANGER);
+                                }
                             }
                         }
                     }
@@ -678,19 +851,47 @@ int main_gui() {
                         const wchar_t* labels[] = { L"读者ID:", L"用户名:", L"真实姓名:", L"联系方式:", L"密码:" };
                         wstring vals[5] = { L"", L"", L"", L"", L"" };
                         if (showInputDialog(L"添加读者", labels, vals, 5)) {
-                            Reader r;
-                            r.setID(_wtoi(vals[0].c_str()));
-                            char buf[256];
-                            WideCharToMultiByte(CP_ACP, 0, vals[1].c_str(), -1, buf, 256, NULL, NULL);
-                            r.setUsername(buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[2].c_str(), -1, buf, 256, NULL, NULL);
-                            r.setRealName(buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[3].c_str(), -1, buf, 256, NULL, NULL);
-                            r.setContact(buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[4].c_str(), -1, buf, 256, NULL, NULL);
-                            r.setPassord(buf);
-                            manager.addReader(r);
-                            showMessage("读者添加成功！", COLOR_BTN);
+                            int newID = _wtoi(vals[0].c_str());
+                            char usernameBuf[256];
+                            WideCharToMultiByte(CP_ACP, 0, vals[1].c_str(), -1, usernameBuf, 256, NULL, NULL);
+                            string newUsername = usernameBuf;
+
+                            // 检查ID和用户名冲突
+                            bool hasConflict = false;
+                            string conflictMsg = "";
+                            vector<Reader>& allReaders = getAllReaders();
+                            for (size_t i = 0; i < allReaders.size(); i++) {
+                                if (allReaders[i].getIdExisting()) {
+                                    if (allReaders[i].getID() == newID) {
+                                        hasConflict = true;
+                                        conflictMsg = "读者ID已存在！";
+                                        break;
+                                    }
+                                    if (allReaders[i].getUsername() == newUsername) {
+                                        hasConflict = true;
+                                        conflictMsg = "用户名已存在！";
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (hasConflict) {
+                                showMessage(conflictMsg, COLOR_BTN_DANGER);
+                            }
+                            else {
+                                Reader r;
+                                r.setID(newID);
+                                r.setUsername(newUsername);
+                                char buf[256];
+                                WideCharToMultiByte(CP_ACP, 0, vals[2].c_str(), -1, buf, 256, NULL, NULL);
+                                r.setRealName(buf);
+                                WideCharToMultiByte(CP_ACP, 0, vals[3].c_str(), -1, buf, 256, NULL, NULL);
+                                r.setContact(buf);
+                                WideCharToMultiByte(CP_ACP, 0, vals[4].c_str(), -1, buf, 256, NULL, NULL);
+                                r.setPassord(buf);
+                                manager.addReader(r);
+                                showMessage("读者添加成功！", COLOR_BTN);
+                            }
                         }
                     }
                     // 删除读者
@@ -705,33 +906,68 @@ int main_gui() {
                         const wchar_t* labels[] = { L"用户名:", L"真实姓名:", L"联系方式:", L"最大借书量:" };
                         wstring vals[4] = { s2ws(r.getUsername()), s2ws(r.getRealName()), s2ws(r.getContact()), to_wstring(r.getMaxBorrowNum()) };
                         if (showInputDialog(L"修改读者", labels, vals, 4)) {
-                            char buf[256];
-                            WideCharToMultiByte(CP_ACP, 0, vals[0].c_str(), -1, buf, 256, NULL, NULL);
-                            manager.chgReaderUsername(selectedReaderIdx, buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[1].c_str(), -1, buf, 256, NULL, NULL);
-                            manager.chgReaderRealname(selectedReaderIdx, buf);
-                            WideCharToMultiByte(CP_ACP, 0, vals[2].c_str(), -1, buf, 256, NULL, NULL);
-                            manager.chgReaderContact(selectedReaderIdx, buf);
-                            manager.chgReaderMaxBorrownum(selectedReaderIdx, _wtoi(vals[3].c_str()));
-                            showMessage("读者修改成功！", RGB(237, 137, 54));
+                            char usernameBuf[256];
+                            WideCharToMultiByte(CP_ACP, 0, vals[0].c_str(), -1, usernameBuf, 256, NULL, NULL);
+                            string newUsername = usernameBuf;
+
+                            // 检查用户名冲突（排除当前读者）
+                            bool hasConflict = false;
+                            string conflictMsg = "";
+                            vector<Reader>& allReaders = getAllReaders();
+                            for (size_t i = 0; i < allReaders.size(); i++) {
+                                if (i != (size_t)selectedReaderIdx && allReaders[i].getIdExisting()) {
+                                    if (allReaders[i].getUsername() == newUsername) {
+                                        hasConflict = true;
+                                        conflictMsg = "用户名已存在！";
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (hasConflict) {
+                                showMessage(conflictMsg, COLOR_BTN_DANGER);
+                            }
+                            else {
+                                manager.chgReaderUsername(selectedReaderIdx, newUsername);
+                                char buf[256];
+                                WideCharToMultiByte(CP_ACP, 0, vals[1].c_str(), -1, buf, 256, NULL, NULL);
+                                manager.chgReaderRealname(selectedReaderIdx, buf);
+                                WideCharToMultiByte(CP_ACP, 0, vals[2].c_str(), -1, buf, 256, NULL, NULL);
+                                manager.chgReaderContact(selectedReaderIdx, buf);
+                                manager.chgReaderMaxBorrownum(selectedReaderIdx, _wtoi(vals[3].c_str()));
+                                showMessage("读者修改成功！", RGB(237, 137, 54));
+                            }
                         }
                     }
                     // 查询读者
                     if (ptInRect(mx, my, cx + 270, cy, 80, 35)) {
-                        const wchar_t* labels[] = { L"读者ID或姓名:" };
-                        wstring vals[1] = { L"" };
+                        const wchar_t* labels[] = { L"关键词(ID/用户名/姓名/联系方式):" };
+                        wstring vals[1] = { readerSearchKey };
                         if (showInputDialog(L"查询读者", labels, vals, 1)) {
                             char buf[256];
                             WideCharToMultiByte(CP_ACP, 0, vals[0].c_str(), -1, buf, 256, NULL, NULL);
-                            int idx = manager.findReader(string(buf));
-                            if (idx < 0) idx = manager.findReader(_wtoi(vals[0].c_str()));
-                            if (idx >= 0) {
-                                selectedReaderIdx = idx;
-                                readerListScroll = max(0, idx - 5);
-                                showMessage("已找到读者！", COLOR_HEADER);
+                            string keyword = buf;
+                            readerSearchKey = vals[0];
+
+                            if (keyword.empty()) {
+                                // 清空搜索，显示所有读者
+                                readerSearchResults.clear();
+                                readerSearchKey = L"";
+                                showMessage("已清空搜索，显示所有读者", COLOR_HEADER);
                             }
                             else {
-                                showMessage("未找到匹配读者", COLOR_BTN_DANGER);
+                                // 执行模糊查询
+                                readerSearchResults = manager.fuzzyFindReader(keyword);
+                                if (!readerSearchResults.empty()) {
+                                    selectedReaderIdx = readerSearchResults[0];
+                                    readerListScroll = 0;
+                                    char msg[128];
+                                    sprintf(msg, "找到 %d 位匹配读者", (int)readerSearchResults.size());
+                                    showMessage(msg, COLOR_HEADER);
+                                }
+                                else {
+                                    showMessage("未找到匹配读者", COLOR_BTN_DANGER);
+                                }
                             }
                         }
                     }
@@ -805,46 +1041,53 @@ int main_gui() {
                     // 还书
                     bcy += 150;
                     if (ptInRect(mx, my, bcx, bcy, 150, 40)) {
-                        const wchar_t* labels[] = { L"读者ID:" };
+                        const wchar_t* labels[] = { L"借阅ID:" };
                         wstring vals[1] = { L"" };
                         if (showInputDialog(L"还书操作", labels, vals, 1)) {
-                            int readerID = _wtoi(vals[0].c_str());
-                            int rIdx = manager.findReader(readerID);
-                            if (rIdx == -1) {
-                                showMessage("读者不存在！", COLOR_BTN_DANGER);
+                            int borrowID = _wtoi(vals[0].c_str());
+                            // 查找借阅记录
+                            int recIdx = recordMgr.findBorrowRecord(borrowID);
+                            if (recIdx == -1) {
+                                showMessage("借阅ID不存在！", COLOR_BTN_DANGER);
                             }
                             else {
-                                Reader r = manager.getreader(rIdx);
-                                // 直接从借阅记录中查找该读者未归还的借阅记录
-                                vector<int> recs = recordMgr.findRecordsByUser(r.getID());
-                                int targetID = -1;
-                                int targetBookID = 0;
-                                for (int idx : recs) {
-                                    if (idx >= 0 && idx < (int)recordMgr.allRecords().size()) {
-                                        const BorrowRecord& br = recordMgr.allRecords()[idx];
-                                        if (br.getReturnTime().empty()) {
-                                            targetID = br.getBorrowID();
-                                            targetBookID = br.getBookID();
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (targetID == -1) {
-                                    showMessage("该读者无未归还的借阅记录！", COLOR_BTN_DANGER);
+                                const BorrowRecord& rec = recordMgr.allRecords()[recIdx];
+                                // 检查是否已归还
+                                if (!rec.getReturnTime().empty()) {
+                                    showMessage("该借阅记录已归还！", COLOR_BTN_DANGER);
                                 }
                                 else {
-                                    double fine = recordMgr.returnBook(targetID, bookmanager.allBooks());
+                                    // 弹出评价输入框
+                                    wchar_t ratingInput[10] = L"5";
+                                    if (InputBox(ratingInput, 10, L"请为这本书评分（1-5星）：", L"还书评价", L"5", 0, 0, false)) {
+                                        int rating = _wtoi(ratingInput);
+                                        if (rating < 1 || rating > 5) {
+                                            showMessage("评价必须在1-5星之间！", COLOR_BTN_DANGER);
+                                        }
+                                        else {
+                                            double fine = recordMgr.returnBook(borrowID, bookmanager.allBooks());
 
-                                    manager.clearReaderBook(rIdx);
-                                    int bIdx = bookmanager.findBook(targetBookID);
-                                    if (bIdx != -1) bookmanager.chgBookIsborrowed(bIdx, false);
-                                    // 自动保存数据
-                                    manager.save("readers.txt");
-                                    bookmanager.save("books.txt");
-                                    recordMgr.save("records.txt");
-                                    char msg[64];
-                                    sprintf(msg, "还书成功！罚款: %.0f 元", fine);
-                                    showMessage(msg, COLOR_BTN);
+                                            // 设置评价
+                                            recordMgr.setRecordRating(borrowID, rating);
+
+                                            // 更新读者和图书状态
+                                            int rIdx = manager.findReader(rec.getUserID());
+                                            if (rIdx >= 0) {
+                                                manager.clearReaderBook(rIdx);
+                                            }
+                                            int bIdx = bookmanager.findBook(rec.getBookID());
+                                            if (bIdx != -1) {
+                                                bookmanager.chgBookIsborrowed(bIdx, false);
+                                            }
+                                            // 自动保存数据
+                                            manager.save("readers.txt");
+                                            bookmanager.save("books.txt");
+                                            recordMgr.save("records.txt");
+                                            char msg[128];
+                                            sprintf(msg, "还书成功！罚款: %.0f 元，评价: %d 星", fine, rating);
+                                            showMessage(msg, COLOR_BTN);
+                                        }
+                                    }
                                 }
                             }
                         }

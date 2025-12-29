@@ -199,6 +199,16 @@ public:
 
 	//8.访问br
 	const vector<BorrowRecord>& allRecords() const { return br; }
+	vector<BorrowRecord>& allRecords() { return br; } // 非const版本用于修改
+
+	//10.设置借阅记录的评价
+	bool setRecordRating(int borrowID, int rating) {
+		int idx = findBorrowRecord(borrowID);
+		if (idx == -1) return false;
+		if (rating < 1 || rating > 5) return false;
+		br[idx].setRating(rating);
+		return true;
+	}
 
 	//9.数据化管理
 //9.数据化管理（文本格式，支持转义）
@@ -212,7 +222,7 @@ public:
 		for (const BorrowRecord& r : br) {
 			ofs << r.getUserID() << '|' << r.getBookID() << '|' << r.getBorrowID() << '|'
 				<< escape_field(r.getBorrowTime()) << '|' << escape_field(r.getShouldReturnTime()) << '|'
-				<< escape_field(r.getReturnTime()) << '|' << r.getContinue()
+				<< escape_field(r.getReturnTime()) << '|' << r.getContinue() << '|' << r.getRating()
 				<< '\n';
 		}
 		ofs.close();
@@ -229,7 +239,7 @@ public:
 		string line;
 		while (std::getline(ifs, line)) {
 			auto fields = split_escaped_line(line);
-			// 期望 7 个字段
+			// 期望 8 个字段（新增评价字段）
 			if (fields.size() < 7) continue;
 			try {
 				int userID = stoi(fields[0]);
@@ -239,8 +249,9 @@ public:
 				string shouldReturn = unescape_field(fields[4]);
 				string returnTime = unescape_field(fields[5]);
 				int cont = stoi(fields[6]);
+				int rating = (fields.size() >= 8) ? stoi(fields[7]) : 0; // 兼容旧数据，默认为0
 
-				BorrowRecord rec(userID, bookID, borrowTime, shouldReturn, returnTime, cont, false, false, 0.0, borrowID);
+				BorrowRecord rec(userID, bookID, borrowTime, shouldReturn, returnTime, cont, false, false, 0.0, borrowID, rating);
 				rec.setBprrowID(borrowID);
 				br.push_back(rec);
 			}

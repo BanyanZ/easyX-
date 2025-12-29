@@ -58,6 +58,30 @@ public:
 		return -1;//找不到返回-1
 	}
 
+	// 模糊查询读者，返回所有匹配的索引
+	vector<int> fuzzyFindReader(const string& keyword) {
+		vector<int> results;
+		if (keyword.empty()) return results;
+
+		for (int i = 0; i < (int)rd.size(); i++) {
+			if (!rd[i].getIdExisting()) continue;
+
+			string username = rd[i].getUsername();
+			string realname = rd[i].getRealName();
+			string contact = rd[i].getContact();
+			string idStr = to_string(rd[i].getID());
+
+			// 检查是否包含关键词（支持ID、用户名、真实姓名、联系方式）
+			if (idStr.find(keyword) != string::npos ||
+				username.find(keyword) != string::npos ||
+				realname.find(keyword) != string::npos ||
+				contact.find(keyword) != string::npos) {
+				results.push_back(i);
+			}
+		}
+		return results;
+	}
+
 	//3.读者信息修改,这里用的是重构函数
 	void chgReaderID(int idx, int id) {
 		rd[idx].setID(id);
